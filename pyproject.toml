@@ -1,0 +1,7 @@
+[project]
+name = "project1"
+version = "0.1.0"
+description = "A project from scratch for Linear regression model"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
