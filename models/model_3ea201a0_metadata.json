@@ -1,0 +1,28 @@
+{
+  "model_id": "model_3ea201a0",
+  "created_at": "2025-12-23T09:09:51.851390",
+  "last_used": "2025-12-23T09:36:33.266458",
+  "has_model": true,
+  "has_data": true,
+  "feature_count": 1,
+  "target_column": "GPA",
+  "data_shape": [
+    83,
+    2
+  ],
+  "model_metadata": {
+    "model_name": "hh",
+    "training_date": "2025-12-23T09:09:51.851390",
+    "learning_rate": 0.01,
+    "epochs": 1000,
+    "target_column": "GPA",
+    "feature_columns": [
+      "SAT"
+    ],
+    "training_samples": 83,
+    "feature_count": 1,
+    "data_id": "data_9d2f0377"
+  },
+  "uploaded_at": "2025-12-23T09:12:56.108848",
+  "original_filename": "hh_2025-12-23.zip"
+}
