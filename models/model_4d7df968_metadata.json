@@ -1,0 +1,26 @@
+{
+  "model_id": "model_4d7df968",
+  "created_at": "2025-12-23T10:16:32.357488",
+  "last_used": "2025-12-23T10:19:20.800559",
+  "has_model": true,
+  "has_data": true,
+  "feature_count": 1,
+  "target_column": "package",
+  "data_shape": [
+    200,
+    2
+  ],
+  "model_metadata": {
+    "model_name": "test5",
+    "training_date": "2025-12-23T10:16:32.357488",
+    "learning_rate": 0.001,
+    "epochs": 5000,
+    "target_column": "package",
+    "feature_columns": [
+      "cgpa"
+    ],
+    "training_samples": 200,
+    "feature_count": 1,
+    "data_id": "data_98788fc5"
+  }
+}

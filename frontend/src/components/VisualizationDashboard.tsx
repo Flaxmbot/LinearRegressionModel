@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  BarChart3, Image, Download, RefreshCw, AlertCircle, Eye, 
-  TrendingUp, TrendingDown, Activity, PieChart, BarChart, 
-  Zap, Target, Layers, FileImage, Lightbulb, Brain, 
+import {
+  BarChart3, Image, Download, RefreshCw, AlertCircle, Eye,
+  TrendingUp, TrendingDown, Activity, PieChart, BarChart,
+  Zap, Target, Layers, FileImage, Lightbulb, Brain,
   ChevronDown, ChevronUp, Filter, Search, Grid, List
 } from 'lucide-react';
 import { TrainResponse, VisualizationData } from '../types/api';
@@ -49,7 +49,7 @@ const ChartCard: React.FC<ChartCardProps> = ({
             <p className="text-sm text-slate-600">{description}</p>
           </div>
         </div>
-        
+
         <div className="flex items-center space-x-2">
           {onRefresh && (
             <button
@@ -61,7 +61,7 @@ const ChartCard: React.FC<ChartCardProps> = ({
               <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
           )}
-          
+
           {onExport && (
             <button
               onClick={onExport}
@@ -71,7 +71,7 @@ const ChartCard: React.FC<ChartCardProps> = ({
               <Download className="h-4 w-4" />
             </button>
           )}
-          
+
           {onToggleExpand && (
             <button
               onClick={onToggleExpand}
@@ -83,7 +83,7 @@ const ChartCard: React.FC<ChartCardProps> = ({
           )}
         </div>
       </div>
-      
+
       {isExpanded && (
         <div className="border border-slate-200 rounded-lg overflow-hidden bg-white min-h-[300px]">
           {isLoading ? (
@@ -111,7 +111,7 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
     distribution: { isLoading: false, image: null as string | null },
     correlation: { isLoading: false, image: null as string | null }
   });
-  
+
   const [insights, setInsights] = useState<any[]>([]);
   const [dataProfile, setDataProfile] = useState<any>(null);
   const [modelInsights, setModelInsights] = useState<any[]>([]);
@@ -126,10 +126,23 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
   const loadEnhancedVisualizationData = async () => {
     if (!trainedModel) return;
 
+    // Show loading state for all charts
+    setChartStates(prev => {
+      const newState = { ...prev };
+      Object.keys(newState).forEach(key => {
+        newState[key as keyof typeof chartStates] = { ...newState[key as keyof typeof chartStates], isLoading: true };
+      });
+      return newState;
+    });
+
     try {
+      // Pass the model_id explicitly to ensure we get data for the correct model
+      const modelId = trainedModel.model_id;
+      console.log(`Generating visualization for model: ${modelId}`);
+
       const [vizData, dataProf, insights, modelIns, recs] = await Promise.all([
-        ApiService.getEnhancedVisualizationData(),
-        ApiService.getDataProfile(),
+        ApiService.getEnhancedVisualizationData(modelId),
+        ApiService.getDataProfile(modelId),
         ApiService.getModelInsights(),
         ApiService.getModelInsights(),
         ApiService.getTrainingRecommendations()
@@ -140,14 +153,30 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
       setInsights(insights);
       setModelInsights(modelIns);
       setRecommendations(recs);
+
+      // Load individual charts after main data
+      refreshAllCharts(modelId);
+
     } catch (error) {
       console.error('Error loading enhanced visualization data:', error);
       toast.error('Failed to load visualization data');
+
+      // Reset loading states
+      setChartStates(prev => {
+        const newState = { ...prev };
+        Object.keys(newState).forEach(key => {
+          newState[key as keyof typeof chartStates] = { ...newState[key as keyof typeof chartStates], isLoading: false };
+        });
+        return newState;
+      });
     }
   };
 
-  const loadChart = async (chartType: keyof typeof chartStates) => {
+  const loadChart = async (chartType: keyof typeof chartStates, modelId?: string) => {
     if (!trainedModel) return;
+
+    // Use provided modelId or fall back to trainedModel.model_id
+    const targetModelId = modelId || trainedModel.model_id;
 
     setChartStates(prev => ({
       ...prev,
@@ -155,9 +184,9 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
     }));
 
     try {
-      const blob = await ApiService.getVisualizationChart(chartType);
+      const blob = await ApiService.getVisualizationChart(chartType, targetModelId);
       const imageUrl = URL.createObjectURL(blob);
-      
+
       setChartStates(prev => ({
         ...prev,
         [chartType]: { isLoading: false, image: imageUrl }
@@ -168,7 +197,7 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
         ...prev,
         [chartType]: { isLoading: false, image: null }
       }));
-      toast.error(`Failed to load ${chartType} chart`);
+      // Don't toast for every individual chart failure to avoid spamming
     }
   };
 
@@ -191,7 +220,7 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
 
   const exportAllCharts = async () => {
     const chartTypes = Object.keys(chartStates) as (keyof typeof chartStates)[];
-    
+
     for (const chartType of chartTypes) {
       if (chartStates[chartType].image) {
         await exportChart(chartType);
@@ -200,22 +229,35 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
     }
   };
 
-  const refreshAllCharts = async () => {
+  const refreshAllCharts = async (modelId?: string) => {
     const chartTypes = Object.keys(chartStates) as (keyof typeof chartStates)[];
-    
+
+    // Load charts sequentially to avoid overwhelming the server
     for (const chartType of chartTypes) {
-      await loadChart(chartType);
+      await loadChart(chartType, modelId);
     }
   };
 
-  // Auto-load data when model is available
+  // Effect to reset state when model changes, but DO NOT auto-load
   useEffect(() => {
     if (trainedModel) {
-      loadEnhancedVisualizationData();
-      // Load first chart by default
-      setTimeout(() => loadChart('actualVsPredicted'), 1000);
+      // Clear existing visualizations when model changes
+      setVisualizationData(null);
+      setDataProfile(null);
+      setInsights([]);
+      setModelInsights([]);
+      setRecommendations([]);
+
+      setChartStates({
+        actualVsPredicted: { isLoading: false, image: null },
+        residuals: { isLoading: false, image: null },
+        featureImportance: { isLoading: false, image: null },
+        performance: { isLoading: false, image: null },
+        distribution: { isLoading: false, image: null },
+        correlation: { isLoading: false, image: null }
+      });
     }
-  }, [trainedModel]);
+  }, [trainedModel?.model_id]); // Only run when model ID changes
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -248,19 +290,39 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
             Comprehensive analysis with multiple visualization perspectives
           </p>
         </div>
-        
+
         <div className="flex space-x-3">
           <button
-            onClick={refreshAllCharts}
+            onClick={() => loadEnhancedVisualizationData()}
+            className="btn-primary flex items-center space-x-2 bg-blue-600 hover:bg-blue-700"
+            disabled={Object.values(chartStates).some(s => s.isLoading)}
+          >
+            {Object.values(chartStates).some(s => s.isLoading) ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <span>Generating...</span>
+              </>
+            ) : (
+              <>
+                <Activity className="h-4 w-4" />
+                <span>Generate Analysis</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={() => refreshAllCharts()}
             className="btn-secondary flex items-center space-x-2"
+            disabled={!visualizationData || Object.values(chartStates).some(s => s.isLoading)}
           >
             <RefreshCw className="h-4 w-4" />
             <span>Refresh All</span>
           </button>
-          
+
           <button
             onClick={exportAllCharts}
-            className="btn-primary flex items-center space-x-2"
+            className="btn-secondary flex items-center space-x-2"
+            disabled={!visualizationData}
           >
             <Download className="h-4 w-4" />
             <span>Export All</span>
@@ -273,16 +335,16 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-slate-800 flex items-center space-x-2">
             <Brain className="h-5 w-5 text-primary-600" />
-            <span>Model Overview</span>
+            <span>Model Overview: {trainedModel.model_name || trainedModel.model_id}</span>
           </h3>
-          
+
           <div className="flex items-center space-x-2">
             <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-              Training Complete
+              Ready to Visualize
             </span>
           </div>
         </div>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white/70 rounded-lg p-4 backdrop-blur-sm">
             <h4 className="font-medium text-slate-700">Target Variable</h4>
@@ -290,34 +352,46 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
               {trainedModel.target}
             </p>
           </div>
-          
+
           <div className="bg-white/70 rounded-lg p-4 backdrop-blur-sm">
             <h4 className="font-medium text-slate-700">Features</h4>
             <p className="text-lg font-bold text-slate-900 mt-1">
               {trainedModel.features_used.length}
             </p>
           </div>
-          
+
           <div className="bg-white/70 rounded-lg p-4 backdrop-blur-sm">
             <h4 className="font-medium text-slate-700">Model Type</h4>
             <p className="text-lg font-bold text-slate-900 mt-1">
               Linear Regression
             </p>
           </div>
-          
+
           <div className="bg-white/70 rounded-lg p-4 backdrop-blur-sm">
             <h4 className="font-medium text-slate-700">Status</h4>
             <p className="text-lg font-bold text-green-600 mt-1">
-              Ready
+              {visualizationData ? 'Analyzed' : 'Pending Analysis'}
             </p>
           </div>
         </div>
+
+        {!visualizationData && (
+          <div className="mt-6 flex justify-center">
+            <button
+              onClick={() => loadEnhancedVisualizationData()}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium shadow-md hover:shadow-lg transition-all flex items-center space-x-2"
+            >
+              <Activity className="h-5 w-5" />
+              <span>Generate Valid Visualizations for this Model</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Data Insights Section */}
       {dataProfile && (
         <div className="card p-6">
-          <div 
+          <div
             className="flex items-center justify-between cursor-pointer"
             onClick={() => toggleSection('profile')}
           >
@@ -325,12 +399,12 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
               <Activity className="h-5 w-5 text-blue-600" />
               <span>Data Profile & Insights</span>
             </h3>
-            {expandedSections.profile ? 
-              <ChevronUp className="h-5 w-5 text-slate-500" /> : 
+            {expandedSections.profile ?
+              <ChevronUp className="h-5 w-5 text-slate-500" /> :
               <ChevronDown className="h-5 w-5 text-slate-500" />
             }
           </div>
-          
+
           {expandedSections.profile && (
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {dataProfile.summary && Object.entries(dataProfile.summary).map(([key, value]) => (
@@ -346,7 +420,7 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
 
       {/* Charts Grid */}
       <div className="space-y-6">
-        <div 
+        <div
           className="flex items-center justify-between cursor-pointer"
           onClick={() => toggleSection('charts')}
         >
@@ -354,12 +428,12 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
             <Grid className="h-5 w-5 text-green-600" />
             <span>Visualization Charts</span>
           </h3>
-          {expandedSections.charts ? 
-            <ChevronUp className="h-5 w-5 text-slate-500" /> : 
+          {expandedSections.charts ?
+            <ChevronUp className="h-5 w-5 text-slate-500" /> :
             <ChevronDown className="h-5 w-5 text-slate-500" />
           }
         </div>
-        
+
         {expandedSections.charts && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Actual vs Predicted Chart */}
@@ -506,7 +580,7 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
       {/* Model Insights Section */}
       {insights && insights.length > 0 && (
         <div className="card p-6">
-          <div 
+          <div
             className="flex items-center justify-between cursor-pointer"
             onClick={() => toggleSection('insights')}
           >
@@ -514,12 +588,12 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
               <Lightbulb className="h-5 w-5 text-yellow-600" />
               <span>AI/ML Insights & Analysis</span>
             </h3>
-            {expandedSections.insights ? 
-              <ChevronUp className="h-5 w-5 text-slate-500" /> : 
+            {expandedSections.insights ?
+              <ChevronUp className="h-5 w-5 text-slate-500" /> :
               <ChevronDown className="h-5 w-5 text-slate-500" />
             }
           </div>
-          
+
           {expandedSections.insights && (
             <div className="mt-4 space-y-3">
               {insights.map((insight, index) => (
@@ -538,7 +612,7 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
       {/* Recommendations Section */}
       {recommendations && recommendations.length > 0 && (
         <div className="card p-6">
-          <div 
+          <div
             className="flex items-center justify-between cursor-pointer"
             onClick={() => toggleSection('recommendations')}
           >
@@ -546,12 +620,12 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
               <Brain className="h-5 w-5 text-green-600" />
               <span>Model Improvement Recommendations</span>
             </h3>
-            {expandedSections.recommendations ? 
-              <ChevronUp className="h-5 w-5 text-slate-500" /> : 
+            {expandedSections.recommendations ?
+              <ChevronUp className="h-5 w-5 text-slate-500" /> :
               <ChevronDown className="h-5 w-5 text-slate-500" />
             }
           </div>
-          
+
           {expandedSections.recommendations && (
             <div className="mt-4 space-y-3">
               {recommendations.map((recommendation, index) => (
@@ -581,7 +655,7 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
             <li>• Export visualizations for reports and presentations</li>
           </ul>
         </div>
-        
+
         <div className="card p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200">
           <h4 className="font-semibold text-slate-800 mb-2 flex items-center space-x-2">
             <Zap className="h-4 w-4 text-purple-600" />

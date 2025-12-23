@@ -49,6 +49,7 @@ class Brain:
     def train(self, features, target, learning_rate, epochs):
         features = np.array(features)
         target = np.array(target)
+        tolerance = 1e-5
         
         # COMPREHENSIVE INPUT VALIDATION AND CONVERSION
         
@@ -133,10 +134,13 @@ class Brain:
             grad, bias_grad = self.gradient(target, features_normalized)
             self.update(grad, bias_grad, learning_rate)
             current_loss = self.loss(target, features_normalized)  # Calculate current loss using normalized features
-            if epoch > 0 and abs(prev_loss - current_loss) < 1e-5:
-                print(f"Converged early at epoch {epoch}")
+            if epoch > 0 and abs(prev_loss - current_loss) < tolerance:
+                print(f"Converged early at epoch {epoch} (Loss: {current_loss:.6f})")
                 break
-            prev_loss = current_loss  # Store current loss for next iteration
+            
+            # 4. Update prev_loss for the NEXT epoch
+            prev_loss = current_loss
+                  # Store current loss for next iteration
             if epoch % 100 == 0:
                 print(f"Epoch {epoch}, Loss: {current_loss}")
         

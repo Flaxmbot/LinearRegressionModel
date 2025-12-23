@@ -1,9 +1,9 @@
 import axios from 'axios';
-import { 
-  UploadResponse, 
-  TrainResponse, 
-  PredictionRequest, 
-  PredictionResponse, 
+import {
+  UploadResponse,
+  TrainResponse,
+  PredictionRequest,
+  PredictionResponse,
   TrainingParams,
   ModelsListResponse,
   ModelSelectionResponse,
@@ -48,20 +48,20 @@ api.interceptors.response.use(
       message: error.message,
       code: error.code
     });
-    
+
     // Handle specific error cases
     if (error.code === 'ECONNABORTED') {
       return Promise.reject(new Error('Request timeout - training may be taking longer than expected'));
     }
-    
+
     if (error.response?.status === 0 || error.response?.status === undefined) {
       return Promise.reject(new Error('Network error - please check if the backend server is running on port 8000'));
     }
-    
+
     if (error.response?.status === 403) {
       return Promise.reject(new Error('Access denied - CORS policy may be blocking the request'));
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -92,7 +92,7 @@ export class ApiService {
   static async trainModel(params: TrainingParams, dataId: string): Promise<TrainResponse> {
     try {
       console.log('Starting model training with params:', params);
-      
+
       const requestBody = {
         target: params.target,
         learning_rate: params.learningRate,
@@ -102,26 +102,26 @@ export class ApiService {
       };
 
       console.log('Making training request to: /train');
-      
+
       const response = await api.post<TrainResponse>('/train', requestBody);
       console.log('Training response received:', response.data);
       return response.data;
     } catch (error: any) {
       console.error('Training failed:', error);
-      
+
       // Provide more specific error messages
       if (error.message.includes('timeout')) {
         throw new Error('Training is taking too long. Try reducing the number of epochs or check your data.');
       }
-      
+
       if (error.message.includes('Network error')) {
         throw new Error('Cannot connect to backend server. Please ensure the server is running on port 8000.');
       }
-      
+
       if (error.message.includes('CORS')) {
         throw new Error('CORS error - please refresh the page and try again.');
       }
-      
+
       // Fall back to the original error message
       throw new Error(error.response?.data?.detail || error.message || 'Failed to train model');
     }
@@ -142,9 +142,13 @@ export class ApiService {
   /**
    * Get visualization data as blob (PNG image)
    */
-  static async getVisualization(): Promise<Blob> {
+  static async getVisualization(modelId?: string): Promise<Blob> {
     try {
+      const params: any = {};
+      if (modelId) params.model_id = modelId;
+
       const response = await api.get('/visualize', {
+        params,
         responseType: 'blob',
       });
       return response.data;
@@ -180,7 +184,7 @@ export class ApiService {
   /**
    * Delete a model by ID
    */
-  static async deleteModel(modelId: string): Promise<{message: string}> {
+  static async deleteModel(modelId: string): Promise<{ message: string }> {
     try {
       const response = await api.delete(`/models/${modelId}`);
       return response.data;
@@ -241,9 +245,12 @@ export class ApiService {
   /**
    * Get enhanced visualization data with multiple charts
    */
-  static async getEnhancedVisualizationData(): Promise<VisualizationData> {
+  static async getEnhancedVisualizationData(modelId?: string): Promise<VisualizationData> {
     try {
-      const response = await api.get<VisualizationData>('/visualization/enhanced');
+      const params: any = {};
+      if (modelId) params.model_id = modelId;
+
+      const response = await api.get<VisualizationData>('/visualization/enhanced', { params });
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Failed to get enhanced visualization data');
@@ -253,9 +260,15 @@ export class ApiService {
   /**
    * Get specific visualization chart data
    */
-  static async getVisualizationChart(chartType: string): Promise<any> {
+  static async getVisualizationChart(chartType: string, modelId?: string): Promise<any> {
     try {
-      const response = await api.get(`/visualization/chart/${chartType}`);
+      const params: any = {};
+      if (modelId) params.model_id = modelId;
+
+      const response = await api.get(`/visualization/chart/${chartType}`, {
+        params,
+        responseType: 'blob'
+      });
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || `Failed to get ${chartType} chart data`);
@@ -265,9 +278,12 @@ export class ApiService {
   /**
    * Get data profiling and analysis
    */
-  static async getDataProfile(): Promise<DataProfile> {
+  static async getDataProfile(modelId?: string): Promise<DataProfile> {
     try {
-      const response = await api.get<DataProfile>('/data/profile');
+      const params: any = {};
+      if (modelId) params.model_id = modelId;
+
+      const response = await api.get<DataProfile>('/data/profile', { params });
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Failed to get data profile');
@@ -315,7 +331,7 @@ export class ApiService {
   /**
    * Cancel ongoing training
    */
-  static async cancelTraining(modelId: string): Promise<{message: string}> {
+  static async cancelTraining(modelId: string): Promise<{ message: string }> {
     try {
       const response = await api.post(`/training/cancel/${modelId}`);
       return response.data;
@@ -353,7 +369,7 @@ export class ApiService {
   /**
    * Upload model from ZIP file
    */
-  static async uploadModel(file: File, onProgress?: (progress: number) => void): Promise<{message: string, model_id: string}> {
+  static async uploadModel(file: File, onProgress?: (progress: number) => void): Promise<{ message: string, model_id: string }> {
     const formData = new FormData();
     formData.append('file', file);
 

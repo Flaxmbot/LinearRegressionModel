@@ -969,12 +969,24 @@ async def get_status():
         )
 
 @app.get("/visualize")
-def visualize_results():
+def visualize_results(model_id: Optional[str] = None):
+    # If model_id is provided, try to load it first
+    if model_id:
+        try:
+            model_manager.load_model(model_id)
+        except Exception as e:
+            print(f"Warning: Could not load requested model {model_id}: {e}")
+            # Continue with current model if load fails, or let get_current_model handle it
+            
     # Get current model data using the model manager
     current_model_data = model_manager.get_current_model()
     
     if not current_model_data:
         raise HTTPException(status_code=400, detail="No model selected. Please select a trained model first.")
+    
+    # Verify we have the correct model if a specific ID was requested
+    if model_id and model_manager.current_model_id != model_id:
+        raise HTTPException(status_code=400, detail=f"Failed to load requested model {model_id}")
     
     # Extract model data
     trained_model = current_model_data['trained_model']
@@ -1258,9 +1270,16 @@ async def get_training_status(model_id: str):
         )
 
 @app.get("/visualization/enhanced")
-async def get_enhanced_visualization():
+async def get_enhanced_visualization(model_id: Optional[str] = None):
     """Get comprehensive visualization data as JSON"""
     try:
+        # If model_id is provided, try to load it first
+        if model_id:
+            try:
+                model_manager.load_model(model_id)
+            except Exception as e:
+                print(f"Warning: Could not load requested model {model_id}: {e}")
+                
         # Get current model data
         current_model_data = model_manager.get_current_model()
         
@@ -1269,6 +1288,10 @@ async def get_enhanced_visualization():
                 status_code=400, 
                 detail="No model selected. Please select a trained model first."
             )
+            
+        # Verify we have the correct model if a specific ID was requested
+        if model_id and model_manager.current_model_id != model_id:
+            raise HTTPException(status_code=400, detail=f"Failed to load requested model {model_id}")
         
         trained_model = current_model_data['trained_model']
         cleaned_df = current_model_data['cleaned_df']
@@ -1367,9 +1390,16 @@ async def get_enhanced_visualization():
         )
 
 @app.get("/visualization/chart/{chartType}")
-async def get_specific_chart(chartType: str):
-    """Get data for specific chart type"""
+async def get_specific_chart(chartType: str, model_id: Optional[str] = None):
+    """Get chart image for specific chart type"""
     try:
+        # If model_id is provided, try to load it first
+        if model_id:
+            try:
+                model_manager.load_model(model_id)
+            except Exception as e:
+                print(f"Warning: Could not load requested model {model_id}: {e}")
+
         # Get current model data
         current_model_data = model_manager.get_current_model()
         
@@ -1378,6 +1408,10 @@ async def get_specific_chart(chartType: str):
                 status_code=400, 
                 detail="No model selected. Please select a trained model first."
             )
+            
+        # Verify we have the correct model if a specific ID was requested
+        if model_id and model_manager.current_model_id != model_id:
+            raise HTTPException(status_code=400, detail=f"Failed to load requested model {model_id}")
         
         trained_model = current_model_data['trained_model']
         cleaned_df = current_model_data['cleaned_df']
@@ -1385,119 +1419,149 @@ async def get_specific_chart(chartType: str):
         feature_cols = current_model_data['feature_cols']
         
         if trained_model is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="Model not trained yet. Please train the model first."
-            )
-        
-        if cleaned_df is None:
-            raise HTTPException(
-                status_code=400, 
-                detail="No data available. Please upload and train a model first."
-            )
-        
-        # Additional explicit DataFrame check
-        if hasattr(cleaned_df, 'empty') and cleaned_df.empty:
-            raise HTTPException(
-                status_code=400, 
-                detail="Data is empty. Please upload and train a model first."
-            )
+            raise HTTPException(status_code=400, detail="Model not trained yet.")
+        if cleaned_df is None or (hasattr(cleaned_df, 'empty') and cleaned_df.empty):
+            raise HTTPException(status_code=400, detail="No data available.")
         
         # Prepare data
         y_actual = cleaned_df[target_col].values
         X = cleaned_df.drop(columns=[target_col]).values
-        y_pred = trained_model.predict(X)
+        y_pred = trained_model.predict(X).flatten()
+        residuals = y_actual - y_pred
+        
+        # Clear any existing plots
+        plt.clf()
+        plt.close('all')
+        
+        # Create figure with aesthetic style
+        sns.set_style("whitegrid")
+        # Use a non-interactive backend to ensure thread safety
+        plt.switch_backend('Agg')
+        
+        fig = plt.figure(figsize=(10, 6))
         
         # Handle different chart types
-        if chartType.lower() == "actualvspredicted" or chartType.lower() == "actualvsPredicted":
-            # Calculate metrics
-            mse = float(np.mean((y_actual - y_pred.flatten()) ** 2))
-            rmse = float(np.sqrt(mse))
-            mae = float(np.mean(np.abs(y_actual - y_pred.flatten())))
-            r2 = float(1 - (np.sum((y_actual - y_pred.flatten()) ** 2) / np.sum((y_actual - np.mean(y_actual)) ** 2)))
-            
-            return {
-                "chart_type": "actual_vs_predicted",
-                "data": {
-                    "actual": y_actual.tolist(),
-                    "predicted": y_pred.flatten().tolist()
-                },
-                "metrics": {
-                    "r2_score": r2,
-                    "mse": mse,
-                    "rmse": rmse,
-                    "mae": mae
-                },
-                "axis_labels": {
-                    "x": f"Actual {target_col}",
-                    "y": f"Predicted {target_col}"
-                }
-            }
+        chart_type_lower = chartType.lower()
         
-        elif chartType.lower() == "residuals":
-            residuals = y_actual - y_pred.flatten()
-            return {
-                "chart_type": "residuals",
-                "data": {
-                    "predicted": y_pred.flatten().tolist(),
-                    "residuals": residuals.tolist()
-                },
-                "axis_labels": {
-                    "x": f"Predicted {target_col}",
-                    "y": "Residuals"
-                }
+        if chart_type_lower in ["actualvspredicted", "actual_vs_predicted"]:
+            plt.scatter(y_actual, y_pred, alpha=0.6, color='#4F46E5', label='Data Points')
+            
+            # Perfect prediction line
+            min_val = min(y_actual.min(), y_pred.min())
+            max_val = max(y_actual.max(), y_pred.max())
+            plt.plot([min_val, max_val], [min_val, max_val], 'r--', lw=2, label='Perfect Prediction')
+            
+            plt.title('Actual vs Predicted Values', fontsize=14, pad=15)
+            plt.xlabel('Actual Values', fontsize=12)
+            plt.ylabel('Predicted Values', fontsize=12)
+            plt.legend()
+            
+            # Add metrics text
+            r2 = 1 - (np.sum((y_actual - y_pred) ** 2) / np.sum((y_actual - np.mean(y_actual)) ** 2))
+            plt.text(0.05, 0.95, f'R² Score: {r2:.3f}', transform=plt.gca().transAxes, 
+                     bbox=dict(facecolor='white', alpha=0.8, edgecolor='#E5E7EB'))
+
+        elif chart_type_lower == "residuals":
+            plt.scatter(y_pred, residuals, alpha=0.6, color='#EC4899')
+            plt.axhline(y=0, color='r', linestyle='--', lw=2)
+            plt.title('Residuals Analysis', fontsize=14, pad=15)
+            plt.xlabel('Predicted Values', fontsize=12)
+            plt.ylabel('Residuals', fontsize=12)
+            
+        elif chart_type_lower in ["featureimportance", "feature_importance"]:
+            if hasattr(trained_model, 'weights') and len(trained_model.weights) > 0:
+                importance = np.abs(trained_model.weights.flatten())
+                # Handle case where we have more features than available logic
+                curr_features = feature_cols[:len(importance)]
+                if len(curr_features) < len(importance):
+                    curr_features.extend([f'Feat_{i}' for i in range(len(curr_features), len(importance))])
+                    
+                # Sort indices
+                indices = np.argsort(importance)[::-1]
+                top_n = min(15, len(importance))  # Limit to top 15
+                
+                sns.barplot(x=importance[indices][:top_n], y=[curr_features[i] for i in indices[:top_n]], palette="viridis")
+                plt.title('Feature Importance (Absolute Weights)', fontsize=14, pad=15)
+                plt.xlabel('Abs(Weight)', fontsize=12)
+            else:
+                plt.text(0.5, 0.5, "No feature weights available", ha='center', va='center', fontsize=14)
+                
+        elif chart_type_lower == "distribution":
+            sns.histplot(y_actual, kde=True, color='#10B981', label='Actual', alpha=0.5)
+            sns.histplot(y_pred, kde=True, color='#6366F1', label='Predicted', alpha=0.5)
+            plt.title('Distribution of Actual vs Predicted Values', fontsize=14, pad=15)
+            plt.xlabel('Target Value', fontsize=12)
+            plt.ylabel('Frequency', fontsize=12)
+            plt.legend()
+            
+        elif chart_type_lower == "correlation":
+            # For correlation, we need the full dataframe including target
+            corr_df = cleaned_df.copy()
+            # Calculate correlation matrix
+            corr = corr_df.select_dtypes(include=[np.number]).corr()
+            
+            # Mask upper triangle for better readability
+            mask = np.triu(np.ones_like(corr, dtype=bool))
+            
+            sns.heatmap(corr, mask=mask, annot=True, fmt=".2f", cmap='coolwarm', 
+                       vmax=1, vmin=-1, center=0, square=True, linewidths=.5, cbar_kws={"shrink": .5})
+            plt.title('Feature Correlation Matrix', fontsize=14, pad=15)
+            
+        elif chart_type_lower == "performance":
+            # Bar chart of metrics
+            metrics = {
+                'MAE': np.mean(np.abs(residuals)),
+                'RMSE': np.sqrt(np.mean(residuals**2)),
+                'Std Dev': np.std(residuals)
             }
-        
-        elif chartType.lower() == "featureimportance" or chartType.lower() == "featureImportance":
-            if len(trained_model.weights) == 0:
-                return {
-                    "chart_type": "feature_importance",
-                    "data": {
-                        "features": [],
-                        "importance": []
-                    },
-                    "message": "No feature weights available"
-                }
             
-            # Get feature importance (absolute weights)
-            feature_importance = np.abs(trained_model.weights.flatten())
+            sns.barplot(x=list(metrics.keys()), y=list(metrics.values()), palette="magma")
+            plt.title('Model Error Metrics', fontsize=14, pad=15)
+            plt.ylabel('Error Value', fontsize=12)
             
-            # Ensure we have feature names
-            feature_names = feature_cols[:len(feature_importance)]
-            if len(feature_names) < len(feature_importance):
-                feature_names.extend([f'Feature_{i}' for i in range(len(feature_names), len(feature_importance))])
-            
-            return {
-                "chart_type": "feature_importance",
-                "data": {
-                    "features": feature_names,
-                    "importance": feature_importance.tolist()
-                },
-                "axis_labels": {
-                    "x": "Features",
-                    "y": "Importance (|Weight|)"
-                }
-            }
-        
+            # Add value labels on top of bars
+            for i, v in enumerate(metrics.values()):
+                plt.text(i, v, f'{v:.3f}', ha='center', va='bottom')
+                
         else:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Unknown chart type: {chartType}. Supported types: actualVsPredicted, residuals, featureImportance"
-            )
+            # Fallback for unknown charts
+            plt.text(0.5, 0.5, f"Chart type '{chartType}' not supported", ha='center', va='center', fontsize=14)
+            plt.axis('off')
+
+        # Save plot to buffer
+        buf = io.BytesIO()
+        plt.tight_layout()
+        plt.savefig(buf, format="png", dpi=100, bbox_inches='tight')
+        buf.seek(0)
+        plt.close()
+        
+        return StreamingResponse(buf, media_type="image/png")
     
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting chart data for {chartType}: {e}")
-        raise HTTPException(
-            status_code=500, 
-            detail=f"Failed to get chart data: {str(e)}"
-        )
+        # Return a simple error image instead of raising 500 JSON to make it visible
+        plt.figure(figsize=(6, 4))
+        plt.text(0.5, 0.5, f"Error generating chart:\n{str(e)}", ha='center', va='center', color='red', wrap=True)
+        plt.axis('off')
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png")
+        buf.seek(0)
+        plt.close()
+        return StreamingResponse(buf, media_type="image/png")
 
 @app.get("/data/profile")
-async def get_data_profile():
+async def get_data_profile(model_id: Optional[str] = None):
     """Get comprehensive data analysis and profiling"""
     try:
+        # If model_id is provided, try to load it first
+        if model_id:
+            try:
+                model_manager.load_model(model_id)
+            except Exception as e:
+                print(f"Warning: Could not load requested model {model_id}: {e}")
+
         # Get current model data
         current_model_data = model_manager.get_current_model()
         
@@ -1506,6 +1570,10 @@ async def get_data_profile():
                 status_code=400, 
                 detail="No model selected. Please select a trained model first."
             )
+            
+        # Verify we have the correct model if a specific ID was requested
+        if model_id and model_manager.current_model_id != model_id:
+            raise HTTPException(status_code=400, detail=f"Failed to load requested model {model_id}")
         
         cleaned_df = current_model_data['cleaned_df']
         
