@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+.env.local
 
 node_modules
 
