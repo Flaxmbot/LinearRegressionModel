@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import Header from './components/Header';
 import FileUpload from './components/FileUpload';
@@ -113,7 +113,7 @@ function App() {
             setIsUploading={setIsUploading}
           />
         );
-      
+
       case 'train':
         return (
           <ModelTraining
@@ -124,7 +124,7 @@ function App() {
             onModelsRefresh={handleModelsRefresh}
           />
         );
-      
+
       case 'models':
         return (
           <ModelSelector
@@ -132,7 +132,7 @@ function App() {
             refreshTrigger={modelsRefreshTrigger}
           />
         );
-      
+
       case 'predict':
         return (
           <PredictionInterface
@@ -141,14 +141,14 @@ function App() {
             setIsPredicting={setIsPredicting}
           />
         );
-      
+
       case 'visualize':
         return (
           <VisualizationDashboard
             trainedModel={trainedModel}
           />
         );
-      
+
       default:
         return null;
     }
@@ -192,7 +192,7 @@ function App() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       {/* Header */}
       <Header activeTab={activeTab} onTabChange={handleTabChange} />
-      
+
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Page Header */}
@@ -208,63 +208,52 @@ function App() {
         {/* Progress Indicators */}
         <div className="flex items-center justify-center mb-8">
           <div className="flex items-center space-x-4">
-            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full ${
-              uploadedData ? 'bg-success-100 text-success-800' : 
-              activeTab === 'upload' ? 'bg-primary-100 text-primary-800' : 
-              'bg-slate-100 text-slate-600'
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                uploadedData ? 'bg-success-600' : 
-                activeTab === 'upload' ? 'bg-primary-600' : 
-                'bg-slate-400'
-              }`}></div>
+            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full ${uploadedData ? 'bg-success-100 text-success-800' :
+                activeTab === 'upload' ? 'bg-primary-100 text-primary-800' :
+                  'bg-slate-100 text-slate-600'
+              }`}>
+              <div className={`w-2 h-2 rounded-full ${uploadedData ? 'bg-success-600' :
+                  activeTab === 'upload' ? 'bg-primary-600' :
+                    'bg-slate-400'
+                }`}></div>
               <span className="text-sm font-medium">Upload</span>
             </div>
-            
-            <div className={`w-8 h-0.5 ${
-              trainedModel ? 'bg-success-600' : 'bg-slate-300'
-            }`}></div>
-            
-            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full ${
-              trainedModel ? 'bg-success-100 text-success-800' : 
-              activeTab === 'train' ? 'bg-primary-100 text-primary-800' : 
-              'bg-slate-100 text-slate-600'
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                trainedModel ? 'bg-success-600' : 
-                activeTab === 'train' ? 'bg-primary-600' : 
-                'bg-slate-400'
+
+            <div className={`w-8 h-0.5 ${trainedModel ? 'bg-success-600' : 'bg-slate-300'
               }`}></div>
+
+            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full ${trainedModel ? 'bg-success-100 text-success-800' :
+                activeTab === 'train' ? 'bg-primary-100 text-primary-800' :
+                  'bg-slate-100 text-slate-600'
+              }`}>
+              <div className={`w-2 h-2 rounded-full ${trainedModel ? 'bg-success-600' :
+                  activeTab === 'train' ? 'bg-primary-600' :
+                    'bg-slate-400'
+                }`}></div>
               <span className="text-sm font-medium">Train</span>
             </div>
-            
-            <div className={`w-8 h-0.5 ${
-              selectedModel ? 'bg-success-600' : 'bg-slate-300'
-            }`}></div>
-            
-            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full ${
-              selectedModel ? 'bg-success-100 text-success-800' : 
-              activeTab === 'models' ? 'bg-primary-100 text-primary-800' : 
-              'bg-slate-100 text-slate-600'
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                selectedModel ? 'bg-success-600' : 
-                activeTab === 'models' ? 'bg-primary-600' : 
-                'bg-slate-400'
+
+            <div className={`w-8 h-0.5 ${selectedModel ? 'bg-success-600' : 'bg-slate-300'
               }`}></div>
+
+            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full ${selectedModel ? 'bg-success-100 text-success-800' :
+                activeTab === 'models' ? 'bg-primary-100 text-primary-800' :
+                  'bg-slate-100 text-slate-600'
+              }`}>
+              <div className={`w-2 h-2 rounded-full ${selectedModel ? 'bg-success-600' :
+                  activeTab === 'models' ? 'bg-primary-600' :
+                    'bg-slate-400'
+                }`}></div>
               <span className="text-sm font-medium">Select</span>
             </div>
-            
-            <div className={`w-8 h-0.5 ${
-              selectedModel ? 'bg-success-600' : 'bg-slate-300'
-            }`}></div>
-            
-            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full ${
-              selectedModel ? 'bg-success-100 text-success-800' : 'bg-slate-100 text-slate-600'
-            }`}>
-              <div className={`w-2 h-2 rounded-full ${
-                selectedModel ? 'bg-success-600' : 'bg-slate-400'
+
+            <div className={`w-8 h-0.5 ${selectedModel ? 'bg-success-600' : 'bg-slate-300'
               }`}></div>
+
+            <div className={`flex items-center space-x-2 px-4 py-2 rounded-full ${selectedModel ? 'bg-success-100 text-success-800' : 'bg-slate-100 text-slate-600'
+              }`}>
+              <div className={`w-2 h-2 rounded-full ${selectedModel ? 'bg-success-600' : 'bg-slate-400'
+                }`}></div>
               <span className="text-sm font-medium">Predict</span>
             </div>
           </div>

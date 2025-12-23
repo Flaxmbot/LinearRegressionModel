@@ -10,7 +10,6 @@ import {
   StatusResponse,
   TrainingStatusUpdate,
   VisualizationData,
-  ModelStatus,
   DataProfile
 } from '../types/api';
 

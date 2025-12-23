@@ -23,7 +23,7 @@ const PredictionInterface: React.FC<PredictionInterfaceProps> = ({
 }) => {
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
   const [featureValues, setFeatureValues] = useState<{ [key: string]: number }>({});
-  
+
   const {
     register,
     handleSubmit,
@@ -106,7 +106,7 @@ const PredictionInterface: React.FC<PredictionInterfaceProps> = ({
           <BarChart3 className="h-5 w-5 text-primary-600" />
           <span>Model Information</span>
         </h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-blue-50 rounded-lg p-4">
             <div className="flex items-center space-x-2">
@@ -117,7 +117,7 @@ const PredictionInterface: React.FC<PredictionInterfaceProps> = ({
               {trainedModel.target}
             </p>
           </div>
-          
+
           <div className="bg-green-50 rounded-lg p-4">
             <div className="flex items-center space-x-2">
               <BarChart3 className="h-5 w-5 text-green-600" />
@@ -150,7 +150,7 @@ const PredictionInterface: React.FC<PredictionInterfaceProps> = ({
           <h3 className="text-lg font-semibold text-slate-800 mb-4">
             Enter Feature Values
           </h3>
-          
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {trainedModel.features_used.map((feature, index) => (
               <div key={index}>
@@ -163,7 +163,7 @@ const PredictionInterface: React.FC<PredictionInterfaceProps> = ({
                   {...register(feature, {
                     required: `${feature} is required`,
                     valueAsNumber: true,
-                    validate: (value) => !isNaN(value) || 'Must be a valid number'
+                    validate: (value) => !isNaN(Number(value)) || 'Must be a valid number'
                   })}
                   className={`input ${errors[feature] ? 'input-error' : ''}`}
                   placeholder={`Enter ${feature} value`}
@@ -198,7 +198,7 @@ const PredictionInterface: React.FC<PredictionInterfaceProps> = ({
                 </>
               )}
             </button>
-            
+
             <button
               type="button"
               onClick={resetForm}
@@ -219,7 +219,7 @@ const PredictionInterface: React.FC<PredictionInterfaceProps> = ({
             <TrendingUp className="h-5 w-5" />
             <span>Prediction Result</span>
           </h3>
-          
+
           <div className="bg-white rounded-lg p-6 border border-success-200">
             <div className="text-center">
               <p className="text-sm text-slate-600 mb-2">
