@@ -37,7 +37,8 @@ app.add_middleware(
         "http://localhost:3001", 
         "http://127.0.0.1:3001",
         "http://localhost:5173",  # Vite default port
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:5173",
+        "https://linear-regression-model-nine.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
