@@ -1,5 +1,9 @@
 import numpy as np
 import pandas as pd
+import sys
+import logging
+
+logger = logging.getLogger(__name__)
 
 class Brain:
     def __init__(self, feature_size, action_size):
@@ -50,6 +54,10 @@ class Brain:
         features = np.array(features)
         target = np.array(target)
         tolerance = 1e-5
+
+        features_memory_mb = sys.getsizeof(features) / (1024 * 1024)
+        target_memory_mb = sys.getsizeof(target) / (1024 * 1024)
+        logger.info(f"Training started - features shape: {features.shape}, target shape: {target.shape}, features memory: {features_memory_mb:.2f} MB, target memory: {target_memory_mb:.2f} MB")
         
         # COMPREHENSIVE INPUT VALIDATION AND CONVERSION
         

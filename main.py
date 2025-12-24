@@ -18,7 +18,11 @@ from pydantic import BaseModel
 from datetime import datetime
 import uuid
 import logging
+import sys
 from typing import Optional, List, Dict, Any
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.inspection import permutation_importance
+from sklearn.dummy import DummyRegressor
 
 
 app = FastAPI()
@@ -60,16 +64,19 @@ class ModelManager:
         self.current_model_id = None
         self.model_directory = "models"  # Directory to store individual model files
         self.temp_data = {}  # Temporary storage for uploaded data
-        
+
         # Enhanced model status tracking
         self.model_status = {}  # Track status: 'training', 'ready', 'error'
-        
+
+        # Training status tracking
+        self.last_training_info = None
+
         # Create models directory if it doesn't exist
         os.makedirs(self.model_directory, exist_ok=True)
-        
+
         # Load existing models
         self.load_all_models()
-        
+
         logger.info(f"ModelManager initialized with {len(self.models)} existing models")
     
     def store_temp_data(self, data_id: str, cleaned_df):
@@ -174,10 +181,14 @@ class ModelManager:
         try:
             # Set status to training during save process
             self.update_model_status(model_id, 'training')
-            
+
+            # Save only a sample of cleaned_df to reduce memory usage (max 1000 rows)
+            sample_size = min(1000, len(cleaned_df))
+            cleaned_df_sample = cleaned_df.sample(n=sample_size, random_state=42) if len(cleaned_df) > sample_size else cleaned_df
+
             # Save model state
             state_data = {
-                'cleaned_df': cleaned_df,
+                'cleaned_df': cleaned_df_sample,
                 'trained_model': trained_model,
                 'feature_cols': feature_cols,
                 'target_col': target_col,
@@ -193,10 +204,11 @@ class ModelManager:
                 'created_at': datetime.now().isoformat(),
                 'last_used': datetime.now().isoformat(),
                 'has_model': trained_model is not None,
-                'has_data': cleaned_df is not None,
+                'has_data': cleaned_df_sample is not None,
                 'feature_count': len(feature_cols),
                 'target_column': target_col,
-                'data_shape': cleaned_df.shape if cleaned_df is not None else None,
+                'data_shape': cleaned_df_sample.shape if cleaned_df_sample is not None else None,
+                'original_data_shape': cleaned_df.shape if cleaned_df is not None else None,
                 'model_metadata': model_metadata
             }
             
@@ -306,7 +318,7 @@ class ModelManager:
         try:
             return self.load_model(self.current_model_id)
         except Exception as e:
-            print(f"⚠️  Warning: Could not load current model: {e}")
+            print(f"Warning: Could not load current model: {e}")
             self.current_model_id = None
             return None
     
@@ -370,9 +382,9 @@ async def make_prediction(input_data: PredictionInput):
     try:
         input_array = np.array([input_data.features])
         prediction = trained_model.predict(input_array)
-        
-        print(f"✅ Prediction successful: {prediction.flatten().tolist()}")
-        
+
+        print(f"Prediction successful: {prediction.flatten().tolist()}")
+
         return {
             "prediction": prediction.flatten().tolist(),
             "features_used": feature_cols,
@@ -384,7 +396,7 @@ async def make_prediction(input_data: PredictionInput):
         }
         
     except Exception as e:
-        print(f"❌ Prediction error: {e}")
+        print(f"Prediction error: {e}")
         raise HTTPException(
             status_code=500, 
             detail=f"Prediction failed: {str(e)}"
@@ -511,25 +523,48 @@ def comprehensive_data_cleaning(df):
 @app.post("/upload")
 async def process_upload(file: fastapi.UploadFile = fastapi.File(...)):
     """Upload and clean data with proper state management."""
-    
-    print(f"📁 Processing file upload: {file.filename}")
-    
+
     try:
-        contents = await file.read()
-        df = pd.read_csv(io.BytesIO(contents))
-        
+        print(f"Processing file upload: {file.filename}")
+
+        # Check file size limit (100MB)
+        MAX_FILE_SIZE_MB = 100
+        file_size = 0
+        contents = b''
+        chunk_size = 1024 * 1024  # 1MB chunks
+        while True:
+            chunk = await file.read(chunk_size)
+            if not chunk:
+                break
+            contents += chunk
+            file_size += len(chunk)
+            if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File too large. Maximum allowed size is {MAX_FILE_SIZE_MB}MB. Your file is {file_size / (1024*1024):.1f}MB."
+                )
+
+        file_size_mb = len(contents) / (1024 * 1024)
+        logger.info(f"File uploaded: {file.filename}, size: {file_size_mb:.2f} MB")
+
+        df = pd.read_csv(io.BytesIO(contents), low_memory=False)
+        df_memory_mb = df.memory_usage(deep=True).sum() / (1024 * 1024)
+        logger.info(f"DataFrame loaded - shape: {df.shape}, memory: {df_memory_mb:.2f} MB")
+
         print(f"Original data shape: {df.shape}")
         print(f"Original columns: {list(df.columns)}")
-        
+
         # Apply comprehensive data cleaning
         cleaned_data = comprehensive_data_cleaning(df)
-        
+        cleaned_memory_mb = cleaned_data.memory_usage(deep=True).sum() / (1024 * 1024)
+        logger.info(f"Data cleaned - shape: {cleaned_data.shape}, memory: {cleaned_memory_mb:.2f} MB")
+
         # Generate a data ID for temporary storage
         data_id = f"data_{uuid.uuid4().hex[:8]}"
-        
+
         # Store in temporary storage
         model_manager.store_temp_data(data_id, cleaned_data)
-        
+
         response_data = {
             "message": "Data cleaned and ready for training",
             "rows": len(cleaned_data),
@@ -539,22 +574,28 @@ async def process_upload(file: fastapi.UploadFile = fastapi.File(...)):
             "filename": file.filename,
             "data_id": data_id
         }
-        
+
         print(f"Data upload successful - Shape: {cleaned_data.shape}")
         print(f"   Data ID for training: {data_id}")
         return response_data
-        
+
     except Exception as e:
         print(f"Upload error: {e}")
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Failed to process upload: {str(e)}"
         )
 
 @app.post("/train")
 async def train_model_with_data(request: dict):
     """Train a new model with uploaded data and save it."""
-    
+
+    # Initialize training tracking
+    training_status = 'failed'
+    error_message = None
+    start_time = None
+    end_time = None
+
     try:
         # Extract parameters from request
         target = request.get('target')
@@ -573,24 +614,31 @@ async def train_model_with_data(request: dict):
         cleaned_df = model_manager.get_temp_data(data_id)
         if cleaned_df is None:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Data not found or expired. Please upload your data again."
             )
-        
+
+        cleaned_memory_mb = cleaned_df.memory_usage(deep=True).sum() / (1024 * 1024)
+        logger.info(f"Retrieved cleaned data - shape: {cleaned_df.shape}, memory: {cleaned_memory_mb:.2f} MB")
+
         if target not in cleaned_df.columns:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"Target column '{target}' not found in data. "
                        f"Available columns: {list(cleaned_df.columns)}"
             )
-        
+
         print(f"Starting model training - Target: {target}, LR: {learning_rate}, Epochs: {epochs}")
-        
+
         # Prepare training data
         y = cleaned_df[target].values
         X = cleaned_df.drop(columns=[target])
         feature_cols = list(X.columns)
         X_values = X.values
+
+        x_memory_mb = sys.getsizeof(X_values) / (1024 * 1024)
+        y_memory_mb = sys.getsizeof(y) / (1024 * 1024)
+        logger.info(f"Training arrays prepared - X: {X_values.shape}, Y: {y.shape}, X memory: {x_memory_mb:.2f} MB, Y memory: {y_memory_mb:.2f} MB")
 
         print(f"Training data prepared - Features: {len(feature_cols)}, Samples: {X_values.shape[0]}")
         print(f"Target column: {target}")
@@ -600,7 +648,10 @@ async def train_model_with_data(request: dict):
         trained_model = brain.Brain(feature_size=X_values.shape[1], action_size=1)
 
         print(f"Training model with {X_values.shape[1]} features...")
+        start_time = datetime.now()
         trained_model.train(X_values, y, learning_rate=learning_rate, epochs=epochs)
+        end_time = datetime.now()
+        training_status = 'completed'
         
         # Generate model ID and metadata
         model_id = model_manager.generate_model_id()
@@ -616,7 +667,11 @@ async def train_model_with_data(request: dict):
             'feature_columns': feature_cols,
             'training_samples': X_values.shape[0],
             'feature_count': X_values.shape[1],
-            'data_id': data_id  # Store reference to original data
+            'data_id': data_id,  # Store reference to original data
+            'training_start': start_time.isoformat() if start_time else None,
+            'training_end': end_time.isoformat() if end_time else None,
+            'training_status': training_status,
+            'error_message': error_message
         }
         
         # Save the model
@@ -628,10 +683,19 @@ async def train_model_with_data(request: dict):
             target_col=target,
             model_metadata=model_metadata
         )
-        
+
+        # Set last training info
+        model_manager.last_training_info = {
+            'model_id': model_id,
+            'start_time': start_time.isoformat() if start_time else None,
+            'end_time': end_time.isoformat() if end_time else None,
+            'status': training_status,
+            'error_message': error_message
+        }
+
         # Select the newly created model
         model_manager.load_model(model_id)
-        
+
         # Clear the temporary data after successful training
         model_manager.clear_temp_data(data_id)
         
@@ -656,9 +720,18 @@ async def train_model_with_data(request: dict):
         }
         
     except Exception as e:
+        training_status = 'failed'
+        error_message = str(e)
+        model_manager.last_training_info = {
+            'model_id': None,
+            'start_time': start_time.isoformat() if start_time else None,
+            'end_time': end_time.isoformat() if end_time else None,
+            'status': training_status,
+            'error_message': error_message
+        }
         print(f"Training error: {e}")
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Training failed: {str(e)}"
         )
 
@@ -850,6 +923,104 @@ async def upload_model(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Error uploading model: {e}")
         raise HTTPException(
-            status_code=500, 
+            status_code=500,
             detail=f"Failed to upload model: {str(e)}"
         )
+
+# New visualization endpoints
+
+@app.get("/training/status")
+async def get_training_status():
+    """Return the status of the current or last training session."""
+    if model_manager.last_training_info is None:
+        return {"message": "No training sessions recorded yet"}
+    return model_manager.last_training_info
+
+@app.get("/model/insights")
+async def get_model_insights(model_id: str):
+    """Return model insights including accuracy, feature importance, and other metrics."""
+    if model_id not in model_manager.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    try:
+        state_data = model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    cleaned_df = state_data['cleaned_df']
+    trained_model = state_data['trained_model']
+    feature_cols = state_data['feature_cols']
+    target_col = state_data['target_col']
+
+    y_true = cleaned_df[target_col].values
+    X = cleaned_df[feature_cols].values
+    y_pred = trained_model.predict(X).flatten()
+
+    mse = mean_squared_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    mae = mean_absolute_error(y_true, y_pred)
+
+    feature_importance = {col: float(trained_model.weights[i][0]) for i, col in enumerate(feature_cols)}
+
+    insights = {
+        "model_id": model_id,
+        "metrics": {"mse": mse, "r2_score": r2, "mae": mae},
+        "feature_importance": feature_importance,
+        "predictions": {"actual": y_true.tolist(), "predicted": y_pred.tolist()}
+    }
+
+    return insights
+
+@app.get("/visualization/enhanced")
+async def get_visualization_data(model_id: str):
+    """Return enhanced visualization data in JSON format."""
+    if model_id not in model_manager.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    try:
+        state_data = model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    cleaned_df = state_data['cleaned_df']
+    feature_cols = state_data['feature_cols']
+    target_col = state_data['target_col']
+
+    scatter_plots = [{"feature": col, "x": cleaned_df[col].tolist(), "y": cleaned_df[target_col].tolist()} for col in feature_cols]
+
+    histograms = []
+    for col in cleaned_df.select_dtypes(include=[np.number]).columns:
+        hist, bins = np.histogram(cleaned_df[col], bins=20)
+        histograms.append({"column": col, "counts": hist.tolist(), "bins": bins.tolist()})
+
+    corr_matrix = cleaned_df.corr().to_dict()
+
+    return {"scatter_plots": scatter_plots, "histograms": histograms, "correlation_matrix": corr_matrix}
+
+@app.get("/training/recommendations")
+async def get_training_recommendations():
+    """Return recommendations for training."""
+    return {
+        "hyperparameters": {"learning_rate": "Start with 0.01, adjust based on convergence", "epochs": "1000 for small datasets, increase for larger ones"},
+        "preprocessing": ["Ensure all data is numeric", "Handle missing values", "Normalize features if needed"],
+        "model_types": ["Linear Regression for continuous targets", "Consider ensemble methods for complex data"]
+    }
+
+@app.get("/data/profile")
+async def get_data_profile(model_id: str):
+    """Return data profiling information for the model's training data."""
+    if model_id not in model_manager.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    try:
+        state_data = model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    cleaned_df = state_data['cleaned_df']
+
+    describe = cleaned_df.describe().to_dict()
+    missing = cleaned_df.isnull().sum().to_dict()
+    dtypes = cleaned_df.dtypes.astype(str).to_dict()
+
+    return {"model_id": model_id, "shape": cleaned_df.shape, "statistics": describe, "missing_values": missing, "data_types": dtypes}

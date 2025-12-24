@@ -1,0 +1,36 @@
+{
+  "model_id": "model_7e29baa4",
+  "created_at": "2025-12-24T09:45:08.119567",
+  "last_used": "2025-12-24T09:45:08.136165",
+  "has_model": true,
+  "has_data": true,
+  "feature_count": 3,
+  "target_column": "target",
+  "data_shape": [
+    10,
+    4
+  ],
+  "original_data_shape": [
+    10,
+    4
+  ],
+  "model_metadata": {
+    "model_name": "Test_Model_target",
+    "training_date": "2025-12-24T09:45:08.119567",
+    "learning_rate": 0.01,
+    "epochs": 100,
+    "target_column": "target",
+    "feature_columns": [
+      "feature1",
+      "feature2",
+      "feature3"
+    ],
+    "training_samples": 10,
+    "feature_count": 3,
+    "data_id": "data_5b70337b",
+    "training_start": "2025-12-24T09:45:08.116012",
+    "training_end": "2025-12-24T09:45:08.119567",
+    "training_status": "completed",
+    "error_message": null
+  }
+}

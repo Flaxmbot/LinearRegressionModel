@@ -9,6 +9,7 @@ fastapi==0.127.0
 fonttools==4.61.1
 h11==0.16.0
 idna==3.11
+joblib==1.5.3
 kiwisolver==1.4.9
 matplotlib==3.10.8
 numpy==2.4.0
@@ -21,9 +22,12 @@ pyparsing==3.2.5
 python-dateutil==2.9.0.post0
 python-multipart==0.0.21
 pytz==2025.2
+scikit-learn==1.8.0
+scipy==1.16.3
 seaborn==0.13.2
 six==1.17.0
 starlette==0.50.0
+threadpoolctl==3.6.0
 typing-extensions==4.15.0
 typing-inspection==0.4.2
 tzdata==2025.3
