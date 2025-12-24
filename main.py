@@ -27,6 +27,10 @@ from sklearn.dummy import DummyRegressor
 
 app = FastAPI()
 
+# Standardize visualization sizes
+STANDARD_FIGSIZE = (10, 6)
+STANDARD_DPI = 100
+
 # Add root endpoint for health checks
 # Trigger reload
 @app.get("/")
@@ -1119,7 +1123,7 @@ def get_actual_vs_predicted_chart(model_id: str):
     X = cleaned_df[feature_cols].values
     y_pred = trained_model.predict(X).flatten()
 
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=STANDARD_FIGSIZE, dpi=STANDARD_DPI)
     plt.scatter(y_true, y_pred, alpha=0.5)
     
     # Add diagonal line
@@ -1155,7 +1159,7 @@ def get_residuals_chart(model_id: str):
     y_pred = trained_model.predict(X).flatten()
     residuals = y_true - y_pred
 
-    plt.figure(figsize=(12, 5))
+    plt.figure(figsize=(12, 6), dpi=STANDARD_DPI)
     
     # Residuals Histogram
     plt.subplot(1, 2, 1)
@@ -1190,7 +1194,7 @@ def get_feature_importance_chart(model_id: str):
 
     weights = [float(w[0]) for w in trained_model.weights]
     
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=STANDARD_FIGSIZE, dpi=STANDARD_DPI)
     # Sort by absolute coefficient value
     sorted_idx = np.argsort(np.abs(weights))
     pos = np.arange(sorted_idx.shape[0]) + .5
@@ -1235,7 +1239,7 @@ def get_performance_chart(model_id: str):
         'MAE': mae
     }
     
-    plt.figure(figsize=(8, 4))
+    plt.figure(figsize=STANDARD_FIGSIZE, dpi=STANDARD_DPI)
     plt.axis('off')
     
     text_str = f"Model Performance Metrics\n\n" \
@@ -1269,7 +1273,7 @@ def get_distribution_chart(model_id: str):
     n_cols = len(cols_to_plot)
     rows = (n_cols + 1) // 2
     
-    plt.figure(figsize=(10, 4 * rows))
+    plt.figure(figsize=(10, 4 * rows), dpi=STANDARD_DPI)
     for i, col in enumerate(cols_to_plot):
         plt.subplot(rows, 2, i+1)
         sns.histplot(cleaned_df[col], kde=True)
@@ -1291,7 +1295,7 @@ def get_correlation_chart(model_id: str):
 
     cleaned_df = state_data['cleaned_df']
     
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(10, 8), dpi=STANDARD_DPI)
     corr = cleaned_df.corr(numeric_only=True)
     sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f")
     plt.title('Feature Correlation Matrix')

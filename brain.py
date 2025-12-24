@@ -59,7 +59,7 @@ class Brain:
         target_memory_mb = sys.getsizeof(target) / (1024 * 1024)
         logger.info(f"Training started - features shape: {features.shape}, target shape: {target.shape}, features memory: {features_memory_mb:.2f} MB, target memory: {target_memory_mb:.2f} MB")
         
-        # COMPREHENSIVE INPUT VALIDATION AND CONVERSION
+        # --- COMPREHENSIVE INPUT VALIDATION AND CONVERSION ---
         
         # 1. Check if features is a proper array
         if not isinstance(features, np.ndarray):
@@ -97,7 +97,7 @@ class Brain:
         # 3. Additional validation
         if features.dtype == object:
             raise ValueError("Features array still has object dtype after conversion attempts. "
-                           "Please ensure all data is numeric before training.")
+                             "Please ensure all data is numeric before training.")
         
         if features.ndim != 2:
             raise ValueError(f"Features must be a 2D array, got shape {features.shape}")
@@ -124,10 +124,15 @@ class Brain:
         try:
             mean_test = np.mean(features, axis=0)
             std_test = np.std(features, axis=0)
-            print(f"SUCCESS: Numpy operations test passed. Features dtype: {features.dtype}, shape: {features.shape}")
+            # print(f"SUCCESS: Numpy operations test passed. Features dtype: {features.dtype}, shape: {features.shape}")
         except Exception as e:
             raise ValueError(f"Numpy operations test failed: {e}")
         
+        # --- CRITICAL FIX: RESHAPE TARGET ---
+        # Ensure target is (N, 1) or (N, output_size) to match model output
+        # This prevents the (N, N) broadcasting error in loss calculation
+        target = target.reshape(-1, self.bias.size)
+
         # Calculate normalization parameters
         self.mean = np.mean(features, axis=0)
         self.std = np.std(features, axis=0)
@@ -138,18 +143,31 @@ class Brain:
         features_normalized = (features - self.mean) / self.std
         
         prev_loss = float('inf')  # Initialize prev_loss
+        
         for epoch in range(epochs):
+            # Gradient calculation
             grad, bias_grad = self.gradient(target, features_normalized)
+            
+            # Update weights
             self.update(grad, bias_grad, learning_rate)
-            current_loss = self.loss(target, features_normalized)  # Calculate current loss using normalized features
+            
+            # Loss calculation
+            # Now passing the reshaped target, so dimensions match correctly
+            current_loss = self.loss(target, features_normalized)
+            
+            # Check for NaN/Explosion
+            if np.isnan(current_loss) or np.isinf(current_loss):
+                print(f"Training failed: Loss exploded at epoch {epoch}. Try reducing learning_rate.")
+                break
+
+            # Convergence Check
             if epoch > 0 and abs(prev_loss - current_loss) < tolerance:
                 print(f"Converged early at epoch {epoch} (Loss: {current_loss:.6f})")
                 break
             
-            # 4. Update prev_loss for the NEXT epoch
             prev_loss = current_loss
-                  # Store current loss for next iteration
+            
             if epoch % 100 == 0:
-                print(f"Epoch {epoch}, Loss: {current_loss}")
+                print(f"Epoch {epoch}, Loss: {current_loss:.6f}")
         
         self.is_trained = True

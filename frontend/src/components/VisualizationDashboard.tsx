@@ -24,6 +24,7 @@ interface ChartCardProps {
   onRefresh?: () => void;
   isExpanded?: boolean;
   onToggleExpand?: () => void;
+  onImageClick?: () => void;
 }
 
 const ChartCard: React.FC<ChartCardProps> = ({
@@ -35,7 +36,8 @@ const ChartCard: React.FC<ChartCardProps> = ({
   onExport,
   onRefresh,
   isExpanded = true,
-  onToggleExpand
+  onToggleExpand,
+  onImageClick
 }) => {
   return (
     <div className="card p-6 hover:shadow-lg transition-shadow duration-200">
@@ -91,7 +93,19 @@ const ChartCard: React.FC<ChartCardProps> = ({
               <InlineLoading message="Generating chart..." />
             </div>
           ) : (
-            children
+            <div
+              className={`relative ${onImageClick ? 'cursor-zoom-in group' : ''}`}
+              onClick={onImageClick}
+            >
+              {children}
+              {onImageClick && !isLoading && (
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100 pointer-events-none">
+                  <div className="bg-white/90 rounded-full p-2 shadow-sm transform scale-90 group-hover:scale-100 transition-transform">
+                    <Search className="h-5 w-5 text-slate-600" />
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -122,6 +136,8 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
     profile: true,
     recommendations: true
   });
+
+  const [selectedImage, setSelectedImage] = useState<{ url: string | null; title: string } | null>(null);
 
   const loadEnhancedVisualizationData = async () => {
     if (!trainedModel) return;
@@ -202,8 +218,10 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
   };
 
   const exportChart = async (chartType: string) => {
+    if (!trainedModel) return;
+
     try {
-      const blob = await ApiService.getVisualizationChart(chartType);
+      const blob = await ApiService.getVisualizationChart(chartType, trainedModel.model_id);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -440,16 +458,17 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
             <ChartCard
               title="Actual vs Predicted"
               icon={<Target className="h-5 w-5 text-blue-600" />}
-              description="Scatter plot comparing actual values with model predictions"
+              description="Scatter plot comparing actual values with model predictions (Click to zoom)"
               isLoading={chartStates.actualVsPredicted.isLoading}
               onExport={() => exportChart('actualVsPredicted')}
               onRefresh={() => loadChart('actualVsPredicted')}
+              onImageClick={() => setSelectedImage({ url: chartStates.actualVsPredicted.image, title: "Actual vs Predicted" })}
             >
               {chartStates.actualVsPredicted.image ? (
                 <img
                   src={chartStates.actualVsPredicted.image}
                   alt="Actual vs Predicted"
-                  className="w-full h-auto max-h-80 object-contain"
+                  className="w-full h-auto max-h-80 object-contain cursor-zoom-in"
                 />
               ) : (
                 <div className="h-80 flex flex-col items-center justify-center text-center p-8">
@@ -463,16 +482,17 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
             <ChartCard
               title="Residuals Analysis"
               icon={<TrendingUp className="h-5 w-5 text-red-600" />}
-              description="Distribution of residuals to check model assumptions"
+              description="Distribution of residuals to check model assumptions (Click to zoom)"
               isLoading={chartStates.residuals.isLoading}
               onExport={() => exportChart('residuals')}
               onRefresh={() => loadChart('residuals')}
+              onImageClick={() => setSelectedImage({ url: chartStates.residuals.image, title: "Residuals Analysis" })}
             >
               {chartStates.residuals.image ? (
                 <img
                   src={chartStates.residuals.image}
                   alt="Residuals Analysis"
-                  className="w-full h-auto max-h-80 object-contain"
+                  className="w-full h-auto max-h-80 object-contain cursor-zoom-in"
                 />
               ) : (
                 <div className="h-80 flex flex-col items-center justify-center text-center p-8">
@@ -486,16 +506,17 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
             <ChartCard
               title="Feature Importance"
               icon={<Layers className="h-5 w-5 text-green-600" />}
-              description="Ranking of feature importance in the model"
+              description="Ranking of feature importance in the model (Click to zoom)"
               isLoading={chartStates.featureImportance.isLoading}
               onExport={() => exportChart('featureImportance')}
               onRefresh={() => loadChart('featureImportance')}
+              onImageClick={() => setSelectedImage({ url: chartStates.featureImportance.image, title: "Feature Importance" })}
             >
               {chartStates.featureImportance.image ? (
                 <img
                   src={chartStates.featureImportance.image}
                   alt="Feature Importance"
-                  className="w-full h-auto max-h-80 object-contain"
+                  className="w-full h-auto max-h-80 object-contain cursor-zoom-in"
                 />
               ) : (
                 <div className="h-80 flex flex-col items-center justify-center text-center p-8">
@@ -509,16 +530,17 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
             <ChartCard
               title="Performance Metrics"
               icon={<Zap className="h-5 w-5 text-yellow-600" />}
-              description="Model performance metrics and accuracy indicators"
+              description="Model performance metrics and accuracy indicators (Click to zoom)"
               isLoading={chartStates.performance.isLoading}
               onExport={() => exportChart('performance')}
               onRefresh={() => loadChart('performance')}
+              onImageClick={() => setSelectedImage({ url: chartStates.performance.image, title: "Performance Metrics" })}
             >
               {chartStates.performance.image ? (
                 <img
                   src={chartStates.performance.image}
                   alt="Performance Metrics"
-                  className="w-full h-auto max-h-80 object-contain"
+                  className="w-full h-auto max-h-80 object-contain cursor-zoom-in"
                 />
               ) : (
                 <div className="h-80 flex flex-col items-center justify-center text-center p-8">
@@ -532,16 +554,17 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
             <ChartCard
               title="Data Distribution"
               icon={<BarChart className="h-5 w-5 text-purple-600" />}
-              description="Distribution of target variable and features"
+              description="Distribution of target variable and features (Click to zoom)"
               isLoading={chartStates.distribution.isLoading}
               onExport={() => exportChart('distribution')}
               onRefresh={() => loadChart('distribution')}
+              onImageClick={() => setSelectedImage({ url: chartStates.distribution.image, title: "Data Distribution" })}
             >
               {chartStates.distribution.image ? (
                 <img
                   src={chartStates.distribution.image}
                   alt="Data Distribution"
-                  className="w-full h-auto max-h-80 object-contain"
+                  className="w-full h-auto max-h-80 object-contain cursor-zoom-in"
                 />
               ) : (
                 <div className="h-80 flex flex-col items-center justify-center text-center p-8">
@@ -555,16 +578,17 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
             <ChartCard
               title="Correlation Heatmap"
               icon={<PieChart className="h-5 w-5 text-indigo-600" />}
-              description="Correlation matrix between features"
+              description="Correlation matrix between features (Click to zoom)"
               isLoading={chartStates.correlation.isLoading}
               onExport={() => exportChart('correlation')}
               onRefresh={() => loadChart('correlation')}
+              onImageClick={() => setSelectedImage({ url: chartStates.correlation.image, title: "Correlation Heatmap" })}
             >
               {chartStates.correlation.image ? (
                 <img
                   src={chartStates.correlation.image}
                   alt="Correlation Heatmap"
-                  className="w-full h-auto max-h-80 object-contain"
+                  className="w-full h-auto max-h-80 object-contain cursor-zoom-in"
                 />
               ) : (
                 <div className="h-80 flex flex-col items-center justify-center text-center p-8">
@@ -669,6 +693,55 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
           </ul>
         </div>
       </div>
+
+      {/* Image Modal */}
+      {selectedImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+          onClick={() => setSelectedImage(null)}
+        >
+          <div
+            className="relative bg-white rounded-lg shadow-2xl max-w-[90vw] max-h-[90vh] overflow-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between sticky top-0 bg-white z-10">
+              <h3 className="text-lg font-semibold text-slate-800">{selectedImage.title}</h3>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = selectedImage.url!;
+                    link.download = `${selectedImage.title.replace(/\s+/g, '-').toLowerCase()}.png`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Download Image"
+                >
+                  <Download className="h-5 w-5" />
+                </button>
+                <button
+                  onClick={() => setSelectedImage(null)}
+                  className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 flex justify-center">
+              <img
+                src={selectedImage.url!}
+                alt={selectedImage.title}
+                className="max-w-full max-h-[80vh] object-contain shadow-lg rounded"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
