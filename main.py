@@ -28,6 +28,7 @@ from sklearn.dummy import DummyRegressor
 app = FastAPI()
 
 # Add root endpoint for health checks
+# Trigger reload
 @app.get("/")
 async def root():
     return {"message": "ML Model API is running", "status": "healthy"}
@@ -35,15 +36,7 @@ async def root():
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", 
-        "http://127.0.0.1:3000",
-        "http://localhost:3001", 
-        "http://127.0.0.1:3001",
-        "http://localhost:5173",  # Vite default port
-        "http://127.0.0.1:5173",
-        "https://linear-regression-model-nine.vercel.app"
-    ],
+    allow_origin_regex=".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1097,6 +1090,213 @@ async def get_visualization_data(model_id: str):
             "model_recommendations": model_recommendations
         }
     }
+
+def create_plot_response():
+    """Helper to convert matplotlib plot to image response."""
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', bbox_inches='tight')
+    buf.seek(0)
+    plt.close() # clear memory
+    return StreamingResponse(buf, media_type="image/png")
+
+@app.get("/visualization/chart/actualVsPredicted")
+def get_actual_vs_predicted_chart(model_id: str):
+    """Generate Actual vs Predicted scatter plot."""
+    if model_id not in model_manager.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    try:
+        state_data = model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    cleaned_df = state_data['cleaned_df']
+    trained_model = state_data['trained_model']
+    feature_cols = state_data['feature_cols']
+    target_col = state_data['target_col']
+
+    y_true = cleaned_df[target_col].values
+    X = cleaned_df[feature_cols].values
+    y_pred = trained_model.predict(X).flatten()
+
+    plt.figure(figsize=(10, 6))
+    plt.scatter(y_true, y_pred, alpha=0.5)
+    
+    # Add diagonal line
+    min_val = min(min(y_true), min(y_pred))
+    max_val = max(max(y_true), max(y_pred))
+    plt.plot([min_val, max_val], [min_val, max_val], 'r--')
+    
+    plt.xlabel('Actual Values')
+    plt.ylabel('Predicted Values')
+    plt.title('Actual vs Predicted Values')
+    plt.grid(True, alpha=0.3)
+    
+    return create_plot_response()
+
+@app.get("/visualization/chart/residuals")
+def get_residuals_chart(model_id: str):
+    """Generate Residuals analysis chart."""
+    if model_id not in model_manager.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    try:
+        state_data = model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    cleaned_df = state_data['cleaned_df']
+    trained_model = state_data['trained_model']
+    feature_cols = state_data['feature_cols']
+    target_col = state_data['target_col']
+
+    y_true = cleaned_df[target_col].values
+    X = cleaned_df[feature_cols].values
+    y_pred = trained_model.predict(X).flatten()
+    residuals = y_true - y_pred
+
+    plt.figure(figsize=(12, 5))
+    
+    # Residuals Histogram
+    plt.subplot(1, 2, 1)
+    sns.histplot(residuals, kde=True)
+    plt.title('Residuals Distribution')
+    plt.xlabel('Residual')
+    
+    # Residuals vs Predicted
+    plt.subplot(1, 2, 2)
+    plt.scatter(y_pred, residuals, alpha=0.5)
+    plt.axhline(y=0, color='r', linestyle='--')
+    plt.title('Residuals vs Predicted')
+    plt.xlabel('Predicted Value')
+    plt.ylabel('Residual')
+    
+    plt.tight_layout()
+    return create_plot_response()
+
+@app.get("/visualization/chart/featureImportance")
+def get_feature_importance_chart(model_id: str):
+    """Generate Feature Importance chart."""
+    if model_id not in model_manager.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    try:
+        state_data = model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    trained_model = state_data['trained_model']
+    feature_cols = state_data['feature_cols']
+
+    weights = [float(w[0]) for w in trained_model.weights]
+    
+    plt.figure(figsize=(10, 6))
+    # Sort by absolute coefficient value
+    sorted_idx = np.argsort(np.abs(weights))
+    pos = np.arange(sorted_idx.shape[0]) + .5
+    
+    plt.barh(pos, np.array(weights)[sorted_idx], align='center')
+    plt.yticks(pos, np.array(feature_cols)[sorted_idx])
+    plt.xlabel('Coefficient Value')
+    plt.title('Feature Importance (Model Coefficients)')
+    plt.grid(True, alpha=0.3)
+    
+    return create_plot_response()
+
+@app.get("/visualization/chart/performance")
+def get_performance_chart(model_id: str):
+    """Generate Performance Metrics chart."""
+    if model_id not in model_manager.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    try:
+        state_data = model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    cleaned_df = state_data['cleaned_df']
+    trained_model = state_data['trained_model']
+    feature_cols = state_data['feature_cols']
+    target_col = state_data['target_col']
+
+    y_true = cleaned_df[target_col].values
+    X = cleaned_df[feature_cols].values
+    y_pred = trained_model.predict(X).flatten()
+
+    mse = mean_squared_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = np.sqrt(mse)
+    
+    metrics = {
+        'R² Score': r2,
+        'MSE': mse,
+        'RMSE': rmse,
+        'MAE': mae
+    }
+    
+    plt.figure(figsize=(8, 4))
+    plt.axis('off')
+    
+    text_str = f"Model Performance Metrics\n\n" \
+               f"R² Score: {r2:.4f}\n" \
+               f"RMSE:     {rmse:.4f}\n" \
+               f"MAE:      {mae:.4f}\n" \
+               f"MSE:      {mse:.4f}"
+               
+    plt.text(0.1, 0.5, text_str, fontsize=14, family='monospace', va='center')
+    plt.title("Key Performance Indicators")
+    
+    return create_plot_response()
+
+@app.get("/visualization/chart/distribution")
+def get_distribution_chart(model_id: str):
+    """Generate Data Distribution chart."""
+    if model_id not in model_manager.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    try:
+        state_data = model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    cleaned_df = state_data['cleaned_df']
+    target_col = state_data['target_col']
+    feature_cols = state_data['feature_cols']
+    
+    # Plot target and up to 5 top features
+    cols_to_plot = [target_col] + feature_cols[:5]
+    n_cols = len(cols_to_plot)
+    rows = (n_cols + 1) // 2
+    
+    plt.figure(figsize=(10, 4 * rows))
+    for i, col in enumerate(cols_to_plot):
+        plt.subplot(rows, 2, i+1)
+        sns.histplot(cleaned_df[col], kde=True)
+        plt.title(f'Distribution of {col}')
+        
+    plt.tight_layout()
+    return create_plot_response()
+
+@app.get("/visualization/chart/correlation")
+def get_correlation_chart(model_id: str):
+    """Generate Correlation Heatmap."""
+    if model_id not in model_manager.models:
+        raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
+
+    try:
+        state_data = model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+
+    cleaned_df = state_data['cleaned_df']
+    
+    plt.figure(figsize=(10, 8))
+    corr = cleaned_df.corr(numeric_only=True)
+    sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f")
+    plt.title('Feature Correlation Matrix')
+    
+    return create_plot_response()
 
 @app.get("/training/recommendations")
 async def get_training_recommendations():
