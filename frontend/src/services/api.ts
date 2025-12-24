@@ -289,16 +289,18 @@ export class ApiService {
   }
 
   /**
-   * Get model performance insights
-   */
-  static async getModelInsights(): Promise<any> {
-    try {
-      const response = await api.get('/model/insights');
-      return response.data;
-    } catch (error: any) {
-      throw new Error(error.response?.data?.detail || 'Failed to get model insights');
-    }
-  }
+    * Get model performance insights
+    */
+   static async getModelInsights(modelId?: string): Promise<any> {
+     try {
+       const params: any = {};
+       if (modelId) params.model_id = modelId;
+       const response = await api.get('/model/insights', { params });
+       return response.data;
+     } catch (error: any) {
+       throw new Error(error.response?.data?.detail || 'Failed to get model insights');
+     }
+   }
 
   /**
    * Get training recommendations

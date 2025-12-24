@@ -973,7 +973,7 @@ async def get_model_insights(model_id: str):
 
 @app.get("/visualization/enhanced")
 async def get_visualization_data(model_id: str):
-    """Return enhanced visualization data in JSON format."""
+    """Return enhanced visualization data in JSON format matching frontend VisualizationData interface."""
     if model_id not in model_manager.models:
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
@@ -983,19 +983,120 @@ async def get_visualization_data(model_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
 
     cleaned_df = state_data['cleaned_df']
+    trained_model = state_data['trained_model']
     feature_cols = state_data['feature_cols']
     target_col = state_data['target_col']
 
-    scatter_plots = [{"feature": col, "x": cleaned_df[col].tolist(), "y": cleaned_df[target_col].tolist()} for col in feature_cols]
+    # Get predictions and actual values
+    y_true = cleaned_df[target_col].values
+    X = cleaned_df[feature_cols].values
+    y_pred = trained_model.predict(X).flatten()
 
-    histograms = []
+    # Calculate metrics
+    mse = mean_squared_error(y_true, y_pred)
+    r2 = r2_score(y_true, y_pred)
+    mae = mean_absolute_error(y_true, y_pred)
+    rmse = np.sqrt(mse)
+
+    # Residuals
+    residuals = y_true - y_pred
+    standardized_residuals = residuals / np.std(residuals) if np.std(residuals) > 0 else residuals
+
+    # Feature importance (using absolute weights)
+    feature_importance_scores = [float(abs(trained_model.weights[i][0])) for i in range(len(feature_cols))]
+    coefficients = [float(trained_model.weights[i][0]) for i in range(len(feature_cols))]
+
+    # Data distribution
+    target_stats = cleaned_df[target_col].describe()
+    target_quartiles = [target_stats['25%'], target_stats['50%'], target_stats['75%']]
+
+    feature_distributions = {}
+    for col in feature_cols:
+        stats = cleaned_df[col].describe()
+        feature_distributions[col] = {
+            'mean': float(stats['mean']),
+            'std': float(stats['std']),
+            'min': float(stats['min']),
+            'max': float(stats['max'])
+        }
+
+    # Correlation matrix
+    corr_df = cleaned_df.corr()
+    feature_names = list(corr_df.columns)
+    correlation_values = corr_df.values.tolist()
+
+    # Performance metrics (additional)
+    explained_variance = 1 - np.var(residuals) / np.var(y_true) if np.var(y_true) > 0 else 0
+    mape = np.mean(np.abs((y_true - y_pred) / y_true)) * 100 if np.all(y_true != 0) else 0
+
+    # Data insights
+    missing_values = cleaned_df.isnull().sum().to_dict()
+    data_quality_score = 1 - (sum(missing_values.values()) / (len(cleaned_df) * len(cleaned_df.columns)))
+
+    # Simple outlier detection (IQR method)
+    outliers = {}
     for col in cleaned_df.select_dtypes(include=[np.number]).columns:
-        hist, bins = np.histogram(cleaned_df[col], bins=20)
-        histograms.append({"column": col, "counts": hist.tolist(), "bins": bins.tolist()})
+        Q1 = cleaned_df[col].quantile(0.25)
+        Q3 = cleaned_df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        outlier_indices = cleaned_df[(cleaned_df[col] < lower_bound) | (cleaned_df[col] > upper_bound)].index.tolist()
+        outliers[col] = outlier_indices
 
-    corr_matrix = cleaned_df.corr().to_dict()
+    feature_suggestions = ["Consider feature scaling if features have different ranges"]
+    model_recommendations = ["Model performance looks good" if r2 > 0.8 else "Consider adding more features or using a different model"]
 
-    return {"scatter_plots": scatter_plots, "histograms": histograms, "correlation_matrix": corr_matrix}
+    return {
+        "actual_vs_predicted": {
+            "actual": y_true.tolist(),
+            "predicted": y_pred.tolist(),
+            "r2_score": float(r2),
+            "mse": float(mse),
+            "rmse": float(rmse),
+            "mae": float(mae)
+        },
+        "residuals": {
+            "residuals": residuals.tolist(),
+            "predicted_values": y_pred.tolist(),
+            "standardized_residuals": standardized_residuals.tolist()
+        },
+        "feature_importance": {
+            "feature_names": feature_cols,
+            "importance_scores": feature_importance_scores,
+            "coefficients": coefficients
+        },
+        "data_distribution": {
+            "target_distribution": {
+                "mean": float(target_stats['mean']),
+                "median": float(target_stats['50%']),
+                "std": float(target_stats['std']),
+                "min": float(target_stats['min']),
+                "max": float(target_stats['max']),
+                "quartiles": [float(q) for q in target_quartiles]
+            },
+            "feature_distributions": feature_distributions
+        },
+        "correlation_matrix": {
+            "feature_names": feature_names,
+            "correlation_values": correlation_values
+        },
+        "performance_metrics": {
+            "r2_score": float(r2),
+            "mse": float(mse),
+            "rmse": float(rmse),
+            "mae": float(mae),
+            "explained_variance": float(explained_variance),
+            "mape": float(mape)
+        },
+        "data_insights": {
+            "data_quality_score": float(data_quality_score),
+            "missing_values": {k: int(v) for k, v in missing_values.items()},
+            "outliers": {k: [int(i) for i in v] for k, v in outliers.items()},
+            "feature_suggestions": feature_suggestions,
+            "model_recommendations": model_recommendations
+        }
+    }
 
 @app.get("/training/recommendations")
 async def get_training_recommendations():
@@ -1008,7 +1109,7 @@ async def get_training_recommendations():
 
 @app.get("/data/profile")
 async def get_data_profile(model_id: str):
-    """Return data profiling information for the model's training data."""
+    """Return data profiling information for the model's training data matching DataProfile interface."""
     if model_id not in model_manager.models:
         raise HTTPException(status_code=404, detail=f"Model {model_id} not found")
 
@@ -1018,9 +1119,105 @@ async def get_data_profile(model_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
 
     cleaned_df = state_data['cleaned_df']
+    target_col = state_data['target_col']
 
-    describe = cleaned_df.describe().to_dict()
-    missing = cleaned_df.isnull().sum().to_dict()
-    dtypes = cleaned_df.dtypes.astype(str).to_dict()
+    # Dataset info
+    total_rows, total_columns = cleaned_df.shape
+    numeric_columns = cleaned_df.select_dtypes(include=[np.number]).columns.tolist()
+    categorical_columns = cleaned_df.select_dtypes(include=['object']).columns.tolist()
+    date_columns = []  # Assuming no date columns for simplicity
 
-    return {"model_id": model_id, "shape": cleaned_df.shape, "statistics": describe, "missing_values": missing, "data_types": dtypes}
+    # Data quality
+    completeness_score = 1 - (cleaned_df.isnull().sum().sum() / (total_rows * total_columns))
+    consistency_score = 1.0  # Placeholder
+    uniqueness_score = cleaned_df.nunique().mean() / total_rows
+    validity_score = 1.0  # Placeholder
+    overall_score = (completeness_score + consistency_score + uniqueness_score + validity_score) / 4
+
+    # Statistical summary
+    numeric_summary = {}
+    for col in numeric_columns:
+        stats = cleaned_df[col].describe()
+        numeric_summary[col] = {
+            'count': int(stats['count']),
+            'mean': float(stats['mean']),
+            'std': float(stats['std']),
+            'min': float(stats['min']),
+            'q1': float(stats['25%']),
+            'median': float(stats['50%']),
+            'q3': float(stats['75%']),
+            'max': float(stats['max']),
+            'missing_count': int(cleaned_df[col].isnull().sum())
+        }
+
+    categorical_summary = {}
+    for col in categorical_columns:
+        value_counts = cleaned_df[col].value_counts()
+        most_frequent = value_counts.index[0] if len(value_counts) > 0 else ""
+        frequency = int(value_counts.iloc[0]) if len(value_counts) > 0 else 0
+        categorical_summary[col] = {
+            'unique_count': int(cleaned_df[col].nunique()),
+            'most_frequent': most_frequent,
+            'frequency': frequency,
+            'missing_count': int(cleaned_df[col].isnull().sum())
+        }
+
+    # Correlations
+    corr_df = cleaned_df.corr(numeric_only=True)
+    high_correlations = []
+    for i in range(len(corr_df.columns)):
+        for j in range(i+1, len(corr_df.columns)):
+            corr_val = corr_df.iloc[i, j]
+            if abs(corr_val) > 0.7:  # High correlation threshold
+                high_correlations.append({
+                    'feature1': corr_df.columns[i],
+                    'feature2': corr_df.columns[j],
+                    'correlation': float(corr_val)
+                })
+
+    correlation_matrix = corr_df.values.tolist()
+    feature_names = corr_df.columns.tolist()
+
+    # Recommendations
+    data_cleaning = []
+    if completeness_score < 0.9:
+        data_cleaning.append("Handle missing values")
+    if len(high_correlations) > 0:
+        data_cleaning.append("Consider removing highly correlated features")
+
+    feature_engineering = ["Consider feature scaling" if len(numeric_columns) > 1 else ""]
+    modeling = ["Linear regression is suitable for this data"]
+    preprocessing = ["Ensure all data is numeric", "Handle outliers if present"]
+
+    return {
+        "dataset_info": {
+            "total_rows": total_rows,
+            "total_columns": total_columns,
+            "numeric_columns": numeric_columns,
+            "categorical_columns": categorical_columns,
+            "date_columns": date_columns,
+            "target_column": target_col
+        },
+        "data_quality": {
+            "completeness_score": float(completeness_score),
+            "consistency_score": float(consistency_score),
+            "uniqueness_score": float(uniqueness_score),
+            "validity_score": float(validity_score),
+            "overall_score": float(overall_score)
+        },
+        "statistical_summary": {
+            "numeric_summary": numeric_summary,
+            "categorical_summary": categorical_summary
+        },
+        "correlations": {
+            "high_correlations": high_correlations,
+            "correlation_matrix": correlation_matrix,
+            "feature_names": feature_names
+        },
+        "recommendations": {
+            "data_cleaning": data_cleaning,
+            "feature_engineering": feature_engineering,
+            "modeling": modeling,
+            "preprocessing": preprocessing
+        }
+    }

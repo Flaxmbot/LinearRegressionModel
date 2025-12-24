@@ -143,8 +143,8 @@ const VisualizationDashboard: React.FC<VisualizationDashboardProps> = ({
       const [vizData, dataProf, insights, modelIns, recs] = await Promise.all([
         ApiService.getEnhancedVisualizationData(modelId),
         ApiService.getDataProfile(modelId),
-        ApiService.getModelInsights(),
-        ApiService.getModelInsights(),
+        ApiService.getModelInsights(modelId),
+        ApiService.getModelInsights(modelId),
         ApiService.getTrainingRecommendations()
       ]);
 
